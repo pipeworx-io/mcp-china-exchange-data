@@ -2,7 +2,7 @@
 
 Live market data straight from the two Chinese mainland exchanges — SZSE (Shenzhen) and SSE (Shanghai), one pack because they are a single jurisdiction. Fills what `@pipeworx/china-stocks` doesn't cover: industry/sector turnover ranking, index daily/weekly bars, a full-market board snapshot for screens, and company bulletins (公告) by code.
 
-Part of [Pipeworx](https://pipeworx.io) — an MCP gateway connecting AI agents to 1573+ live data sources.
+Part of [Pipeworx](https://pipeworx.io) — an MCP gateway connecting AI agents to 1576+ live data sources.
 
 板块 主力资金 净流入 指数 日线 公告 — 深交所 上交所 A股行情数据接口
 
@@ -81,7 +81,7 @@ directly, instead of just this one's:
 }
 ```
 
-Both URLs reach the same gateway and the same 1573+ data sources. The
+Both URLs reach the same gateway and the same 1576+ data sources. The
 only difference is which pack's tools are listed **directly**; `ask_pipeworx`
 reaches all of them from either one.
 
