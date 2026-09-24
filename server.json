@@ -3,7 +3,7 @@
   "name": "io.github.pipeworx-io/china-exchange-data",
   "title": "China Exchange Data",
   "description": "China Exchange Data MCP (SZSE + SSE). Keyless.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "websiteUrl": "https://pipeworx.io/packs/china-exchange-data",
   "repository": {
     "url": "https://github.com/pipeworx-io/mcp-china-exchange-data",
