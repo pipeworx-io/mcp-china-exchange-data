@@ -687,14 +687,23 @@ function collapse(s: string): string {
  *    CATALOGID=<id> — used here for CATALOGID=1804_gptj_merge_after (股票行业
  *    统计, industry turnover statistics; requires txtQueryDate).
  *  - SZSE quote history: www.szse.cn/api/market/ssjjhq/getHistoryData?
- *    cycleType=<32|33>&marketId=1&code=<code> — daily(32)/weekly(33) OHLC
- *    bars for any SZSE-listed code OR SZSE index (399xxx). Row shape
+ *    cycleType=<32|33|37>&marketId=1&code=<code> — daily(32)/weekly(33)/
+ *    annual(37) OHLC bars for any SZSE-listed code OR SZSE index (399xxx).
+ *    No begin/end window param — always returns full available history
+ *    (confirmed back to 1991 for 399xxx indices), sliced client-side to the
+ *    requested count. (cycleType 34/35/36 = monthly/quarterly/semi-annual,
+ *    probed but not exposed as tool params — not asked for.) Row shape
  *    (empirically confirmed, not documented by SZSE):
- *    [date, open, close, low, high, change, change_pct, volume, amount].
+ *    [date, open, close, low, high, change, change_pct, volume, amount] —
+ *    change/change_pct are period-over-period (e.g. for cycleType=37, this
+ *    year's close vs last year's close), computed by SZSE itself.
  *  - SSE public quote system: yunhq.sse.com.cn:32041/v1/sh1/... (plain HTTP
- *    only — the TLS port is not reachable from here). /dayk/<code> gives
- *    daily OHLCV bars for any SSE code OR SSE index (000xxx/999xxx), row =
- *    [date(YYYYMMDD), open, high, low, close, volume, amount].
+ *    only — the TLS port is not reachable from here). /dayk/<code>?period=
+ *    day|week|year gives OHLCV bars for any SSE code OR SSE index
+ *    (000xxx/999xxx); period=year confirmed live back to the 1990s. Row =
+ *    [date(YYYYMMDD), open, high, low, close, volume, amount] — no
+ *    change/change_pct field, so ashares_index_bars computes it here from
+ *    consecutive closes (fetches one extra bar as the prior-close anchor).
  *    /list/exchange/equity gives the full SSE equity board as one paged call
  *    (~2,358 rows): [code, name, last, change_pct, volume, amount] — a
  *    real-time/latest-session snapshot, not per-symbol OHLC, and not
@@ -752,6 +761,24 @@ function round2(v: number | null): number | null {
 }
 function todayISO(): string {
   return new Date().toISOString().slice(0, 10);
+}
+/** True if `dateStr` (YYYY-MM-DD) is the exchange's in-progress CURRENT year,
+ * not yet a closed calendar year — both exchanges' annual-bar endpoints append
+ * a running bar for the current year dated "today" rather than year-end until
+ * the year actually closes (confirmed live 2026-10-10: the newest annual bar
+ * for 000001/399001 was dated 2026-10-09, not 2026-12-3x). Treating that as a
+ * completed "2026 annual close" would silently push a 6-year request to
+ * 2021-2026 instead of 2020-2025 — so `years` mode drops it. Once the
+ * calendar reaches the exchanges' actual year-end trading days (～Dec 29-31)
+ * the bar IS the real close and is kept. */
+function isPartialCurrentYear(dateStr: string): boolean {
+  const today = todayISO();
+  if (dateStr.slice(0, 4) !== today.slice(0, 4)) return false;
+  return !(today.slice(5, 7) === '12' && Number(today.slice(8, 10)) >= 28);
+}
+function dropTrailingPartialYear<T extends { date: string }>(bars: T[]): T[] {
+  if (bars.length === 0) return bars;
+  return isPartialCurrentYear(bars[bars.length - 1].date) ? bars.slice(0, -1) : bars;
 }
 function stripJsonp(text: string): unknown {
   const m = text.match(/^[^(]*\(([\s\S]*)\)\s*;?\s*$/);
@@ -821,13 +848,14 @@ const tools: McpToolExport['tools'] = [
   {
     name: 'ashares_index_bars',
     description:
-      '上证/深证指数日线周线 — Daily or weekly OHLC + volume + turnover bars for a major China A-share index: 上证指数 Shanghai Composite (000001), 上证50 (000016), 沪深300 CSI 300 (000300), 科创50 STAR50 (000688) from SSE; 深证成指 Shenzhen Component (399001), 创业板指 ChiNext (399006) from SZSE. Answers "上证指数000001最近10个交易日OHLC", "Shanghai Composite last 10 days", "深证成指周线", "ChiNext index history". Source: SSE yunhq public quote system (000xxx/999xxx indices) + SZSE ssjjhq history API (399xxx indices), both keyless.',
+      '上证/深证指数日线周线年线 — Daily, weekly, or annual OHLC + volume + turnover bars for a major China A-share index: 上证指数 Shanghai Composite (000001), 上证50 (000016), 沪深300 CSI 300 (000300), 科创50 STAR50 (000688) from SSE; 深证成指 Shenzhen Component (399001), 创业板指 ChiNext (399006) from SZSE. Weekly history goes back up to 6 years (312 bars); `years` returns one bar per calendar year (close + year-over-year pct change) for multi-year questions like "5 years of annual closes for CSI 300". Answers "上证指数000001最近10个交易日OHLC", "Shanghai Composite last 10 days", "深证成指周线", "ChiNext index history", "CSI 300 annual close 2020-2025". Source: SSE yunhq public quote system (000xxx/999xxx indices) + SZSE ssjjhq history API (399xxx indices), both keyless.',
     inputSchema: {
       type: 'object' as const,
       properties: {
         index: { type: 'string', description: 'Index code: 000001 (上证指数), 000016 (上证50), 000300 (沪深300), 000688 (科创50), 399001 (深证成指), 399006 (创业板指). Default 000001.' },
-        days: { type: 'number', description: 'Number of daily bars to return, 1-250 (default 10). Ignored if weeks is set.' },
-        weeks: { type: 'number', description: 'Number of weekly bars to return, 1-104. Overrides days when set.' },
+        days: { type: 'number', description: 'Number of daily bars to return, 1-250 (default 10). Ignored if weeks or years is set.' },
+        weeks: { type: 'number', description: 'Number of weekly bars to return, 1-312 (up to ~6 years). Overrides days when set; ignored if years is set.' },
+        years: { type: 'number', description: 'Number of annual bars to return, 1-40 — one bar per calendar year with close and year-over-year pct_change. Overrides weeks and days when set. E.g. years:6 for 2020-2025 inclusive.' },
       },
     },
   },
@@ -904,13 +932,27 @@ async function sectorFlows(args: Record<string, unknown>) {
 // ── ashares_index_bars ──────────────────────────────────────────────
 async function indexBars(args: Record<string, unknown>) {
   const code = typeof args.index === 'string' && args.index.trim() ? args.index.trim() : '000001';
-  const weeks = args.weeks != null ? Math.min(Math.max(Number(args.weeks), 1), 104) : null;
-  const days = weeks == null ? Math.min(Math.max(Number(args.days ?? 10), 1), 250) : null;
+  // years > weeks > days. Weekly ceiling raised 104 -> 312 (~6y); years is new
+  // (both exchanges expose a native annual cycle — confirmed live 2026-10-10:
+  // SZSE cycleType=37, SSE yunhq period=year — so this is a real upstream bar
+  // size, not a client-side aggregation).
+  const years = args.years != null ? Math.min(Math.max(Number(args.years), 1), 40) : null;
+  const weeks = years == null && args.weeks != null ? Math.min(Math.max(Number(args.weeks), 1), 312) : null;
+  const days = years == null && weeks == null ? Math.min(Math.max(Number(args.days ?? 10), 1), 250) : null;
+  const want = (years ?? weeks ?? days) as number;
+  const period = years != null ? 'annual' : weeks != null ? 'weekly' : 'daily';
   const exch = indexExchange(code);
   const name = exch === 'sse' ? SSE_INDICES[code] : SZSE_INDICES[code];
 
   if (exch === 'szse') {
-    const cycleType = weeks != null ? 33 : 32;
+    // SZSE cycleType: 32 daily, 33 weekly, 37 annual (confirmed live; 34/35/36
+    // are monthly/quarterly/semi-annual, not used here). getHistoryData has no
+    // begin/end window param — it always returns full available history and
+    // we slice client-side, which is also how the weekly ceiling raise works
+    // with no upstream change. change/change_pct in the row are already
+    // period-over-period (confirmed: 2020 annual change = 2020 close - 2019
+    // close for 399001), so no recomputation needed here.
+    const cycleType = years != null ? 37 : weeks != null ? 33 : 32;
     const params = new URLSearchParams({ random: String(Math.random()), cycleType: String(cycleType), marketId: '1', code });
     const res = await pwFetch(`${SZSE_HISTORY}?${params}`, { headers: { Referer: SZSE_REFERER } }, 'SZSE');
     if (!res.ok) throw await httpError(res, 'SZSE');
@@ -918,36 +960,63 @@ async function indexBars(args: Record<string, unknown>) {
     if (body.code !== '0' || !body.data?.picupdata) {
       return { index: code, name: name ?? body.data?.name ?? null, found: false, message: `No SZSE history for index ${code}.` };
     }
-    const want = (weeks ?? days) as number;
-    const bars = body.data.picupdata.slice(-want).map((r) => szseRow(r));
+    // For annual, fetch a small margin so dropping the in-progress current
+    // year still leaves `want` closed years (full history is always returned
+    // here regardless, so this costs nothing extra upstream).
+    let bars = body.data.picupdata.slice(-(want + (years != null ? 2 : 0))).map((r) => szseRow(r));
+    if (years != null) bars = dropTrailingPartialYear(bars);
+    bars = bars.slice(-want);
     return {
       index: code,
       name: name ?? body.data.name ?? null,
-      period: weeks != null ? 'weekly' : 'daily',
+      period,
       bar_count: bars.length,
       bars,
-      source: 'SZSE ssjjhq getHistoryData (cycleType=32 daily / 33 weekly, marketId=1) — undocumented row order confirmed empirically as [date, open, close, low, high, change, change_pct, volume, amount]',
+      source: years != null
+        ? 'SZSE ssjjhq getHistoryData (cycleType=37 annual, marketId=1) — one bar per calendar year; change/change_pct are SZSE-computed year-over-year close deltas'
+        : 'SZSE ssjjhq getHistoryData (cycleType=32 daily / 33 weekly, marketId=1) — undocumented row order confirmed empirically as [date, open, close, low, high, change, change_pct, volume, amount]',
     };
   }
 
-  // SSE via yunhq: /v1/sh1/dayk/<code>?begin=-N&end=-1&period=day
-  const want = (weeks ?? days) as number;
-  const period = weeks != null ? 'week' : 'day';
-  const url = `${SSE_YUNHQ}/v1/sh1/dayk/${encodeURIComponent(code)}?begin=-${want}&end=-1&period=${period}`;
+  // SSE via yunhq: /v1/sh1/dayk/<code>?begin=-N&end=-1&period=day|week|year
+  // (period=year confirmed live 2026-10-10 — e.g. 000001 has 37 annual bars
+  // back to the 1990s). Two things to compensate for, both confirmed live:
+  //  (a) yunhq's "begin=-N" is off by one — it returns N-1 bars, not N (this
+  //      IS the original bug symptom: weeks:104 returned bar_count 103).
+  //  (b) yunhq's row has no change/change_pct field, so we compute it here
+  //      from consecutive closes, which needs one extra prior-close anchor.
+  // For annual we also need one more so dropping the in-progress current
+  // year still leaves `want` closed years.
+  const upstreamPeriod = years != null ? 'year' : weeks != null ? 'week' : 'day';
+  const offByOne = 1; // (a)
+  const anchorExtra = 1; // (b)
+  const partialYearExtra = years != null ? 1 : 0;
+  const requestN = want + offByOne + anchorExtra + partialYearExtra;
+  const url = `${SSE_YUNHQ}/v1/sh1/dayk/${encodeURIComponent(code)}?begin=-${requestN}&end=-1&period=${upstreamPeriod}`;
   const res = await pwFetch(url, {}, 'SSE');
   if (!res.ok) throw await httpError(res, 'SSE');
   const body = (await res.json()) as { code?: string; kline?: unknown[][] };
   if (!body.kline || body.kline.length === 0) {
     return { index: code, name: name ?? null, found: false, message: `No SSE history for index ${code}.` };
   }
-  const bars = body.kline.map((r) => sseRow(r));
+  const parsed = body.kline.map((r) => sseRow(r));
+  let withChange = parsed.map((r, i) => {
+    const prevClose = i > 0 ? parsed[i - 1].close : null;
+    const change = prevClose != null && r.close != null ? round2(r.close - prevClose) : null;
+    const change_pct = prevClose != null && r.close != null && prevClose !== 0 ? round2(((r.close - prevClose) / prevClose) * 100) : null;
+    return { ...r, change, change_pct };
+  });
+  if (years != null) withChange = dropTrailingPartialYear(withChange);
+  const bars = withChange.length > want ? withChange.slice(-want) : withChange;
   return {
     index: code,
     name: name ?? null,
-    period: weeks != null ? 'weekly' : 'daily',
+    period,
     bar_count: bars.length,
     bars,
-    source: 'SSE yunhq public quote system /v1/sh1/dayk (row = [date, open, high, low, close, volume, amount])',
+    source: years != null
+      ? 'SSE yunhq public quote system /v1/sh1/dayk period=year — one bar per calendar year; change/change_pct computed here (close vs prior year close) since SSE does not return them'
+      : 'SSE yunhq public quote system /v1/sh1/dayk (row = [date, open, high, low, close, volume, amount]; change/change_pct computed here from consecutive closes)',
   };
 }
 
