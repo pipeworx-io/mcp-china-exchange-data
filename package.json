@@ -1,6 +1,6 @@
 {
   "name": "@pipeworx/mcp-china-exchange-data",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "China Exchange Data MCP (SZSE + SSE). Keyless.",
   "type": "module",
   "main": "src/index.ts",
@@ -26,7 +26,7 @@
     "@cloudflare/workers-types": "^4.20260405.1"
   },
   "pipeworx": {
-    "sourceHash": "v1-e0db7e980f2ed0c7143fa1b14df39e2dfa0a393077a4f75b56eabf6d8da23510",
-    "sourceCommit": "b0a4b8e2f3f5b3a4c3f9f2c9a73f91b20d32ce11"
+    "sourceHash": "v1-c43b0408f554412b81da36817071eabaec613d4d6a03569a3e5bc64068163d57",
+    "sourceCommit": "f1ef7a2f6b9cb1b8da1374ec2fcb28c661582b35"
   }
 }
