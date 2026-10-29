@@ -1,12 +1,20 @@
 {
   "name": "@pipeworx/mcp-china-exchange-data",
-  "version": "0.1.5",
+  "version": "0.2.0",
   "description": "China Exchange Data MCP (SZSE + SSE). Keyless.",
   "type": "module",
-  "main": "src/index.ts",
-  "types": "src/index.ts",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./tools.json": "./tools.json",
+    "./package.json": "./package.json"
+  },
   "bin": {
     "mcp-china-exchange-data": "bin/cli.js"
+  },
+  "files": ["bin/", "lib/", "tools.json", "server.json"],
+  "engines": {
+    "node": ">=18"
   },
   "keywords": ["mcp", "mcp-server", "model-context-protocol", "pipeworx", "china-exchange-data"],
   "license": "MIT",
@@ -14,19 +22,12 @@
     "type": "git",
     "url": "git+https://github.com/pipeworx-io/mcp-china-exchange-data.git"
   },
-  "scripts": {
-    "typecheck": "tsc --noEmit"
-  },
-  "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.30.0",
-    "tsx": "^4.19.0"
-  },
-  "devDependencies": {
-    "typescript": "^5.9.3",
-    "@cloudflare/workers-types": "^4.20260405.1"
-  },
+  "mcpName": "io.github.pipeworx-io/china-exchange-data",
   "pipeworx": {
-    "sourceHash": "v1-c43b0408f554412b81da36817071eabaec613d4d6a03569a3e5bc64068163d57",
-    "sourceCommit": "f1ef7a2f6b9cb1b8da1374ec2fcb28c661582b35"
+    "mode": "gateway",
+    "slug": "china-exchange-data",
+    "gatewaySlug": "china-exchange-data",
+    "sourceHash": "v1-4314b068680284be172650e61afdba147aeeb257692c9dd675acc6a18736df09",
+    "sourceCommit": "4277282d72f9bf55e548b3799aaf737baf22152f"
   }
 }
